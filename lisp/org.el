@@ -2498,6 +2498,14 @@ command used) one higher or lower that the default priority."
   :group 'org-priorities
   :type 'boolean)
 
+(defcustom org-use-prio-inheritance nil
+  "Non-nil means priority in levels apply also for sublevels.
+When nil, only the priority directly given in a specific line apply there."
+  :group 'org-priorities
+  :type '(choice
+	  (const :tag "Not" nil)
+	  (const :tag "Always" t)))
+
 (defcustom org-get-priority-function nil
   "Function to extract the priority from a string.
 The string is normally the headline.  If this is nil Org computes the
@@ -12332,15 +12340,20 @@ ACTION can be `set', `up', `down', or a character."
 	(message "Priority removed")
       (message "Priority of current item set to %s" news))))
 
-(defun org-get-priority (s)
-  "Find priority cookie and return priority."
+(defun org-get-priority-char (s &optional fallback)
+  "Return priority cookie as char. Defaults to FALLBACK or, if that's
+unset, to org-default-priority."
+  (save-match-data
+    (if (string-match org-priority-regexp s)
+	(string-to-char (match-string 2 s))
+      (or fallback org-default-priority))))
+
+(defun org-get-priority (s &optional fallback)
+  "Find priority cookie and return priority. Defaults to FALLBACK or, if that's
+unset, to org-default-priority."
   (if (functionp org-get-priority-function)
       (funcall org-get-priority-function)
-    (save-match-data
-      (if (not (string-match org-priority-regexp s))
-	  (* 1000 (- org-lowest-priority org-default-priority))
-	(* 1000 (- org-lowest-priority
-		   (string-to-char (match-string 2 s))))))))
+    (* 1000 (- org-lowest-priority (org-get-priority-char s fallback)))))
 
 ;;;; Tags
 
@@ -12393,8 +12406,9 @@ only lines with a TODO keyword are included in the output."
 	 (org-map-continue-from nil)
          lspos tags tags-list
 	 (tags-alist (list (cons 0 org-file-tags)))
+	 (prio-alist (list (cons 0 org-default-priority)))
 	 (llast 0) rtn rtn1 level category i txt
-	 todo marker entry priority)
+	 todo marker entry priority prio-char)
     (when (not (or (member action '(agenda sparse-tree)) (functionp action)))
       (setq action (list 'lambda nil action)))
     (save-excursion
@@ -12409,8 +12423,18 @@ only lines with a TODO keyword are included in the output."
 	  (goto-char (setq lspos (match-beginning 0)))
 	  (setq level (org-reduced-level (funcall outline-level))
 		category (org-get-category))
-	  (setq i llast llast level)
+	  (setq txt (org-get-heading))
+
+	  (when org-use-prio-inheritance
+	    ;; remove prio from same and sublevels
+	    (while (>= (caar prio-alist) level)
+	      (pop prio-alist))
+	    ;; add this prio
+	    (setq prio-char (org-get-priority-char txt (cdar prio-alist)))
+	    (push (cons level prio-char) prio-alist))
+
 	  ;; remove tag lists from same and sublevels
+	  (setq i llast llast level)
 	  (while (>= i level)
 	    (when (setq entry (assoc i tags-alist))
 	      (setq tags-alist (delete entry tags-alist)))
@@ -12469,21 +12493,28 @@ only lines with a TODO keyword are included in the output."
 	    (cond
 	     ((eq action 'sparse-tree)
 	      (and org-highlight-sparse-tree-matches
-		   (org-get-heading) (match-end 0)
+		   txt (match-end 0)
 		   (org-highlight-new-match
 		    (match-beginning 0) (match-beginning 1)))
 	      (org-show-context 'tags-tree))
 	     ((eq action 'agenda)
+	      ;; paste in inherited priority tag if different from
+	      ;; default priority
+	      (when (and org-use-prio-inheritance
+		         (not (equal (org-get-priority-char txt) prio-char)))
+		(setq txt (replace-regexp-in-string "\\( \\).*\\'" 
+			      (concat " [#" (char-to-string prio-char) "] ")
+			      txt nil nil 1)))
 	      (setq txt (org-format-agenda-item
 			 ""
 			 (concat
 			  (if (eq org-tags-match-list-sublevels 'indented)
 			      (make-string (1- level) ?.) "")
-			  (org-get-heading))
+			  txt)
 			 category
 			 tags-list
 			 )
-		    priority (org-get-priority txt))
+		    priority (org-get-priority txt prio-char))
 	      (goto-char lspos)
 	      (setq marker (org-agenda-new-marker))
 	      (org-add-props txt props
