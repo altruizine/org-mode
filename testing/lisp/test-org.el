@@ -12,12 +12,12 @@
 
 
 ;;; Code:
-(let ((load-path (cons (expand-file-name
-			".." (file-name-directory
-			      (or load-file-name buffer-file-name)))
-		       load-path)))
-  (require 'org-test)
-  (require 'org-test-ob-consts))
+(let* ((testing-lisp-dir (file-name-directory
+			  (or load-file-name buffer-file-name)))
+       (load-path (cons testing-lisp-dir load-path)))
+  (dolist (file (directory-files testing-lisp-dir 'full
+				 "^\\([^.]\\|\\.\\([^.]\\|\\..\\)\\).*\\.org$"))
+    (require (intern (substring file 0 (- (length file) 3))))))
 
 
 ;;; Tests
@@ -82,7 +82,7 @@
   (should
    (string=
     "àâçèéêîôùû"
-    (org-link-unescape "%E0%E2%E7%E8%E9%EA%EE%F4%F9%FB"))))
+        (decode-coding-string (org-link-unescape "%E0%E2%E7%E8%E9%EA%EE%F4%F9%FB") 'latin-1))))
 
 (ert-deftest test-org/org-link-escape-url-with-escaped-char ()
   "Escape and unscape a URL that includes an escaped char.

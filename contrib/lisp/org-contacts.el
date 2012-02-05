@@ -1,6 +1,6 @@
 ;;; org-contacts.el --- Contacts management
 
-;; Copyright (C) 2010, 2011 Julien Danjou <julien@danjou.info>
+;; Copyright (C) 2010-2012 Julien Danjou <julien@danjou.info>
 
 ;; Author: Julien Danjou <julien@danjou.info>
 ;; Keywords: outlines, hypermedia, calendar
@@ -36,6 +36,9 @@
 ;;
 ;;; Code:
 
+(eval-when-compile
+  (require 'cl))
+
 (eval-and-compile
   (require 'org))
 
@@ -51,6 +54,11 @@ If set to nil, all your Org files will be used."
 
 (defcustom org-contacts-email-property "EMAIL"
   "Name of the property for contact email address."
+  :type 'string
+  :group 'org-contacts)
+
+(defcustom org-contacts-address-property "ADDRESS"
+  "Name of the property for contact address."
   :type 'string
   :group 'org-contacts)
 
@@ -116,6 +124,11 @@ This overrides `org-email-link-description-format' if set."
   :group 'org-contacts
   :type 'string)
 
+(defcustom org-contacts-vcard-file "contacts.vcf"
+  "Default file for vcard export."
+  :group 'org-contacts
+  :type 'file)
+
 (defvar org-contacts-keymap
   (let ((map (make-sparse-keymap)))
     (define-key map "M" 'org-contacts-view-send-email)
@@ -144,7 +157,7 @@ If both match values are nil, return all contacts."
     (dolist (file (org-contacts-files))
       (org-check-agenda-file file)
       (with-current-buffer (org-get-agenda-file-buffer file)
-        (unless (org-mode-p)
+        (unless (eq major-mode 'org-mode)
           (error "File %s is no in `org-mode'" file))
         (org-scan-tags
          '(add-to-list 'markers (set-marker (make-marker) (point)))
@@ -156,9 +169,10 @@ If both match values are nil, return all contacts."
 
 (when (not (fboundp 'completion-table-case-fold))
   ;; That function is new in Emacs 24...
-  (defun completion-table-case-fold (table string pred action)
-    (let ((completion-ignore-case t))
-      (complete-with-action action table string pred))))
+  (defun completion-table-case-fold (table &optional dont-fold)
+    (lambda (string pred action)
+      (let ((completion-ignore-case (not dont-fold)))
+	(complete-with-action action table string pred)))))
 
 (defun org-contacts-complete-name (&optional start)
   "Complete text at START with a user name and email."
@@ -213,9 +227,7 @@ If both match values are nil, return all contacts."
                                            ;; If the user has an email address, append USER <EMAIL>.
                                            if email collect (org-contacts-format-email contact-name email))
                                      ", ")))))
-    (list start end (if org-contacts-completion-ignore-case
-			(apply-partially #'completion-table-case-fold completion-list)
-		      completion-list))))
+    (list start end (completion-table-case-fold completion-list (not org-contacts-completion-ignore-case)))))
 
 (defun org-contacts-message-complete-function ()
   "Function used in `completion-at-point-functions' in `message-mode'."
@@ -224,16 +236,12 @@ If both match values are nil, return all contacts."
         (when (mail-abbrev-in-expansion-header-p)
           (org-contacts-complete-name))))
 
-(add-hook 'message-mode-hook
-          (lambda ()
-            (add-to-list 'completion-at-point-functions
-                         'org-contacts-message-complete-function)))
-
 (defun org-contacts-gnus-get-name-email ()
   "Get name and email address from Gnus message."
-  (gnus-with-article-headers
-    (mail-extract-address-components
-     (or (mail-fetch-field "From") ""))))
+  (if (gnus-alive-p)
+      (gnus-with-article-headers
+        (mail-extract-address-components
+         (or (mail-fetch-field "From") "")))))
 
 (defun org-contacts-gnus-article-from-get-marker ()
   "Return a marker for a contact based on From."
@@ -254,7 +262,7 @@ If both match values are nil, return all contacts."
     (when marker
       (switch-to-buffer-other-window (marker-buffer marker))
       (goto-char marker)
-      (when (org-mode-p)
+      (when (eq major-mode 'org-mode)
         (org-show-context 'agenda)
         (save-excursion
           (and (outline-next-heading)
@@ -403,12 +411,17 @@ This adds `org-contacts-gnus-check-mail-address' and
   (add-hook 'gnus-article-prepare-hook 'org-contacts-gnus-check-mail-address)
   (add-hook 'gnus-article-prepare-hook 'org-contacts-gnus-store-last-mail))
 
+(when (boundp 'completion-at-point-functions)
+  (add-hook 'message-mode-hook
+	    (lambda ()
+	      (add-to-list 'completion-at-point-functions
+			   'org-contacts-message-complete-function))))
+
 (defun org-contacts-wl-get-from-header-content ()
   "Retrieve the content of the `From' header of an email.
 Works from wl-summary-mode and mime-view-mode - that is while viewing email.
 Depends on Wanderlust been loaded."
-  (save-excursion
-    (set-buffer (org-capture-get :original-buffer))
+  (with-current-buffer (org-capture-get :original-buffer)
     (cond
      ((eq major-mode 'wl-summary-mode) (when wl-summary-buffer-elmo-folder
                                          (elmo-message-field
@@ -520,12 +533,86 @@ If ASK is set, ask for the email address even if there's only one address."
 
 (defun erc-nicknames-list ()
   "Return all nicknames of all ERC buffers."
-  (loop for buffer in (erc-buffer-list)
-        nconc (with-current-buffer buffer
-                (loop for user-entry in (mapcar 'car (erc-get-channel-user-list))
-                      collect (elt user-entry 1)))))
+  (if (fboundp 'erc-buffer-list)
+      (loop for buffer in (erc-buffer-list)
+            nconc (with-current-buffer buffer
+                    (loop for user-entry in (mapcar 'car (erc-get-channel-user-list))
+                          collect (elt user-entry 1))))))
 
 (add-to-list 'org-property-set-functions-alist
              `(,org-contacts-nickname-property . org-contacts-completing-read-nickname))
+
+(defun org-contacts-vcard-escape (str)
+  "Escape ; , and \n in STR for use in the VCard format.
+Thanks to http://www.emacswiki.org/cgi-bin/wiki/bbdb-vcard-export.el for the regexp."
+  (when str
+    (replace-regexp-in-string "\n" "\\\\n" (replace-regexp-in-string "\\(;\\|,\\|\\\\\\)" "\\\\\\1" str))))
+
+(defun org-contacts-vcard-encode-name (name)
+  "Try to encode NAME as VCard's N property. The N property expects FamilyName;GivenName;AdditionalNames;Prefix;Postfix.
+Org-contacts does not specify how to encode the name. So we try to do our best."
+  (concat (replace-regexp-in-string "\\(\\w+\\) \\(.*\\)" "\\2;\\1" name) ";;;"))
+
+(defun org-contacts-vcard-format (contact)
+  "Formats CONTACT in VCard 3.0 format."
+  (let* ((properties (caddr contact))
+	 (name (org-contacts-vcard-escape (car contact)))
+	 (n (org-contacts-vcard-encode-name name))
+	 (email (org-contacts-vcard-escape (cdr (assoc-string org-contacts-email-property properties))))
+	 (bday (org-contacts-vcard-escape (cdr (assoc-string org-contacts-birthday-property properties))))
+	 (addr (cdr (assoc-string org-contacts-address-property properties)))
+	 (nick (org-contacts-vcard-escape (cdr (assoc-string org-contacts-nickname-property properties))))
+
+	 (head (format "BEGIN:VCARD\nVERSION:3.0\nN:%s\nFN:%s\n" n name)))
+    (concat head
+	    (when email (format "EMAIL:%s\n" email))
+	    (when addr
+	      (format "ADR:;;%s\n" (replace-regexp-in-string "\\, ?" ";" addr)))
+	    (when bday
+	      (let ((cal-bday (calendar-gregorian-from-absolute (org-time-string-to-absolute bday))))
+		(format "BDAY:%04d-%02d-%02d\n"
+			(calendar-extract-year cal-bday)
+			(calendar-extract-month cal-bday)
+			(calendar-extract-day cal-bday))))
+	    (when nick (format "NICKNAME:%s\n" nick))
+	    "END:VCARD\n\n")))
+
+(defun org-contacts-export-as-vcard (&optional name file to-buffer)
+  "Export all contacts matching NAME as VCard 3.0. It TO-BUFFER is nil, the content is written to FILE or `org-contacts-vcard-file'. If TO-BUFFER is non-nil, the buffer is created and the VCard is written into that buffer."
+  (interactive) ; TODO ask for name?
+  (let* ((filename (or file org-contacts-vcard-file))
+	 (buffer (if to-buffer
+		     (get-buffer-create to-buffer)
+		     (find-file-noselect filename))))
+
+    (message "Exporting...")
+
+    (set-buffer buffer)
+    (let ((inhibit-read-only t)) (erase-buffer))
+    (fundamental-mode)
+    (org-install-letbind)
+
+    (when (fboundp 'set-buffer-file-coding-system)
+      (set-buffer-file-coding-system coding-system-for-write))
+
+    (loop for contact in (org-contacts-filter name)
+	 do (insert (org-contacts-vcard-format contact)))
+
+    (if to-buffer
+	(current-buffer)
+	(progn (save-buffer) (kill-buffer)))))
+
+(defun org-contacts-show-map (&optional name)
+  "Show contacts on a map. Requires google-maps-el."
+  (interactive)
+  (unless (fboundp 'google-maps-static-show)
+    (error "org-contacts-show-map requires google-maps-el."))
+  (google-maps-static-show
+   :markers
+   (loop
+      for contact in (org-contacts-filter name)
+      for addr = (cdr (assoc-string org-contacts-address-property (caddr contact)))
+      if addr
+      collect (cons (list addr) (list :label (string-to-char (car contact)))))))
 
 (provide 'org-contacts)

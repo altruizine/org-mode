@@ -1,6 +1,6 @@
 ;;; test-ob-tangle.el
 
-;; Copyright (c) 2010 Eric Schulte
+;; Copyright (c) 2010-2012 Eric Schulte
 ;; Authors: Eric Schulte
 
 ;; Released under the GNU General Public License version 3
@@ -47,11 +47,32 @@
 
 (ert-deftest ob-tangle/no-excessive-id-insertion-on-tangle ()
   "Don't add IDs to headings without tangling code blocks."
-  (org-test-at-id "ae7b55ca-9ef2-4d30-bd48-da30e35fd0f3"
+  (org-test-at-id "ef06fd7f-012b-4fde-87a2-2ae91504ea7e"
     (org-babel-next-src-block)
+    (org-narrow-to-subtree)
     (org-babel-tangle)
-    (org-babel-previous-src-block)
     (should (null (org-id-get)))))
+
+(ert-deftest ob-tangle/continued-code-blocks-w-noweb-ref ()
+  "Test that the :noweb-ref header argument is used correctly."
+  (org-test-at-id "54d68d4b-1544-4745-85ab-4f03b3cbd8a0"
+    (let ((tangled
+	   "df|sed '1d'|awk '{print $5 \" \" $6}'|sort -n |tail -1|awk '{print $2}'"))
+      (org-narrow-to-subtree)
+      (org-babel-tangle)
+      (with-temp-buffer
+	(insert-file-contents "babel.sh")
+	(goto-char (point-min))
+	(should (re-search-forward (regexp-quote tangled) nil t)))
+      (delete-file "babel.sh"))))
+
+(ert-deftest ob-tangle/expand-headers-as-noweb-references ()
+  "Test that references to headers are expanded during noweb expansion."
+  (org-test-at-id "2409e8ba-7b5f-4678-8888-e48aa02d8cb4"
+    (org-babel-next-src-block 2)
+    (let ((expanded (org-babel-expand-noweb-references)))
+      (should (string-match (regexp-quote "simple") expanded))
+      (should (string-match (regexp-quote "length 14") expanded)))))
 
 (provide 'test-ob-tangle)
 

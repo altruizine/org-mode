@@ -16,10 +16,15 @@ EMACS=emacs
 # Where local software is found
 prefix=/usr/local
 
-# Where local lisp files go.
+# Where local lisp files go
 lispdir   = $(prefix)/share/emacs/site-lisp
 
-# Where info files go.
+# Where data files go
+# $(datadir) contains auxiliary files for use with ODT exporter.
+# See comments under DATAFILES.
+datadir = $(prefix)/share/emacs/etc
+
+# Where info files go
 infodir = $(prefix)/share/info
 
 ##----------------------------------------------------------------------
@@ -29,7 +34,7 @@ infodir = $(prefix)/share/info
 # Using emacs in batch mode.
 
 BATCH=$(EMACS) -batch -q -no-site-file -eval                             			\
-  "(setq load-path (cons (expand-file-name \"./lisp/\") (cons \"$(lispdir)\" load-path)))"
+  "(setq load-path (cons (expand-file-name \"./lisp/\") (cons \"$(lispdir)\" load-path)))" $(BATCH_EXTRA)
 
 # Specify the byte-compiler for compiling org-mode files
 ELC= $(BATCH) -f batch-byte-compile
@@ -48,7 +53,7 @@ TEXI2HTML = makeinfo --html --number-sections
 TEXI2HTMLNOPSLIT = makeinfo --html --no-split --number-sections
 
 # How to copy the lisp files and elc files to their distination.
-CP = cp -p
+CP = cp -pr
 
 # Name of the program to install info files
 INSTALL_INFO=install-info
@@ -85,6 +90,7 @@ LISPF      = 	org.el			\
 		org-footnote.el		\
 		org-freemind.el		\
 		org-gnus.el		\
+		org-eshell.el		\
 		org-habit.el		\
 		org-html.el		\
 		org-icalendar.el	\
@@ -96,6 +102,7 @@ LISPF      = 	org.el			\
 		org-irc.el		\
 		org-latex.el		\
 		org-list.el		\
+		org-lparse.el		\
 		org-mac-message.el	\
 	     	org-macs.el		\
 		org-mew.el              \
@@ -103,6 +110,7 @@ LISPF      = 	org.el			\
 		org-mks.el		\
 		org-mobile.el		\
 		org-mouse.el		\
+		org-odt.el		\
 		org-publish.el		\
 		org-plot.el		\
 		org-protocol.el		\
@@ -126,6 +134,7 @@ LISPF      = 	org.el			\
 		ob-comint.el		\
 		ob-eval.el		\
 		ob-keys.el		\
+		ob-awk.el		\
 		ob-C.el			\
 		ob-calc.el		\
 		ob-ditaa.el		\
@@ -155,7 +164,13 @@ LISPF      = 	org.el			\
 		ob-plantuml.el		\
 		ob-org.el		\
 		ob-js.el		\
-		ob-scheme.el
+		ob-scheme.el		\
+		ob-lilypond.el		\
+		ob-java.el		\
+		ob-shen.el		\
+		ob-fortran.el		\
+		ob-picolisp.el		\
+		ob-maxima.el
 
 LISPFILES0  = $(LISPF:%=lisp/%)
 LISPFILES   = $(LISPFILES0) lisp/org-install.el
@@ -167,6 +182,26 @@ DOCFILES    = doc/org.texi doc/org.pdf doc/org doc/dir \
 CARDFILES   = doc/orgcard.tex doc/orgcard.pdf doc/orgcard_letter.pdf
 TEXIFILES   = doc/org.texi
 INFOFILES   = doc/org
+
+# etc/styles contains OpenDocument style files.  These files *must* be
+# installed for the ODT exporter to function.  These files are
+# distirbuted with GNU ELPA as well as with stock Emacs >= 24.1.
+
+# contrib/odt/etc/schema contains OpenDocument schema files.  It is
+# *desirable* but *not* mandatory that these files be installed.
+# These files are not distributed with stock Emacs.  This is because
+# the terms under which OASIS distributes these files are not
+# agreeable to FSF.
+
+# BasicODConverter-x.y.z.oxt is a LibreOffice extension for converting
+# OpenDocument files to numerous other formats.  It is similar to
+# unoconv and is implemented in StarBasic.  It is *desirable* but
+# *not* *mandatory* that the converter be installed.  It is
+# distributed under the same license as GNU Emacs.  This file is *not*
+# part of GNU Emacs.
+DATAFILES   = etc/styles \
+	      # contrib/odt/BasicODConverter/BasicODConverter*.oxt \
+	      # contrib/odt/etc/schema \
 
 # Package Manager (ELPA)
 PKG_TAG = $(shell date +%Y%m%d)
@@ -180,13 +215,14 @@ PKG_FILES = $(LISPFILES0)		\
             doc/orgguide.pdf		\
             doc/orgcard.tex		\
             doc/orgcard.pdf		\
-            doc/orgcard_letter.pdf
+            doc/orgcard_letter.pdf	\
+            etc/
 
 .SUFFIXES: .el .elc .texi
 SHELL = /bin/sh
 
 # Additional distribution files
-DISTFILES_extra=  Makefile request-assign-future.txt contrib
+DISTFILES_extra=  Makefile request-assign-future.txt contrib etc
 
 default: $(ELCFILES) $(ELCBFILES)
 
@@ -202,7 +238,7 @@ update:
 
 compile: $(ELCFILES0) $(ELCBFILES)
 
-install: install-lisp
+install: install-lisp install-data
 
 doc: doc/org.html doc/org.pdf doc/orgcard.pdf doc/orgcard_letter.pdf doc/orgguide.pdf doc/orgcard.txt
 
@@ -212,6 +248,15 @@ p:
 g:
 	${MAKE} pdf && open doc/orgguide.pdf
 
+# Always force re-compilation of org-odt
+lisp/org-odt.elc: org-odt-data-dir
+org-odt-data-dir:
+
+# Sleight of hand to "hard code" the value of $(datadir) in
+# org-odt.el.  See variables `org-odt-styles-dir-list' and
+# `org-odt-schema-dir-list'.
+install-lisp: BATCH_EXTRA = -eval "(setq org-odt-data-dir (expand-file-name \"$(datadir)\"))"
+
 install-lisp: $(LISPFILES) $(ELCFILES)
 	if [ ! -d $(lispdir) ]; then $(MKDIR) $(lispdir); else true; fi ;
 	$(CP) $(LISPFILES)  $(lispdir)
@@ -220,47 +265,47 @@ install-lisp: $(LISPFILES) $(ELCFILES)
 install-info: $(INFOFILES)
 	if [ ! -d $(infodir) ]; then $(MKDIR) $(infodir); else true; fi ;
 	$(CP) $(INFOFILES) $(infodir)
-	$(INSTALL_INFO) --info-file=$(INFOFILES) --info-dir=$(infodir)
-
-install-info-debian: $(INFOFILES)
 	$(INSTALL_INFO) --infodir=$(infodir) $(INFOFILES)
+
+install-data: $(DATAFILES)
+	if [ ! -d $(datadir) ]; then $(MKDIR) $(datadir); else true; fi ;
+	$(CP) $(DATAFILES) $(datadir)
 
 autoloads: lisp/org-install.el
 
 lisp/org-install.el: $(LISPFILES0) Makefile
 	$(BATCH) --eval "(require 'autoload)" \
-		--eval '(find-file "org-install.el")'  \
+		--eval '(find-file "lisp/org-install.el")'  \
 		--eval '(erase-buffer)' \
-		--eval '(mapc (lambda (x) (generate-file-autoloads (symbol-name x))) (quote ($(LISPFILES0))))' \
+		--eval '(mapc (lambda (x) (generate-file-autoloads (symbol-name x))) (quote ($(LISPF))))' \
 		--eval '(insert "\n(provide (quote org-install))\n")' \
 		--eval '(save-buffer)'
-	mv org-install.el lisp
 
 doc/org: doc/org.texi
-	(cd doc; $(MAKEINFO) --no-split org.texi -o org)
+	(cd doc && $(MAKEINFO) --no-split org.texi -o org)
 
 doc/org.pdf: doc/org.texi
-	(cd doc; $(TEXI2PDF) org.texi)
+	(cd doc && $(TEXI2PDF) org.texi)
 
 doc/orgguide.pdf: doc/orgguide.texi
-	(cd doc; $(TEXI2PDF) orgguide.texi)
+	(cd doc && $(TEXI2PDF) orgguide.texi)
 
 doc/org.html: doc/org.texi
-	(cd doc; $(TEXI2HTML) --no-split -o org.html org.texi)
+	(cd doc && $(TEXI2HTML) --no-split -o org.html org.texi)
 	UTILITIES/manfull.pl doc/org.html
 
 doc/orgcard.pdf: doc/orgcard.tex
-	(cd doc; pdftex orgcard.tex)
+	(cd doc && pdftex orgcard.tex)
 
 doc/orgcard.txt: doc/orgcard.tex
-	(cd doc; perl ../UTILITIES/orgcard2txt.pl orgcard.tex > orgcard.txt)
+	(cd doc && perl ../UTILITIES/orgcard2txt.pl orgcard.tex > orgcard.txt)
 
 doc/orgcard_letter.tex: doc/orgcard.tex
 	perl -pe 's/\\pdflayout=\(0l\)/\\pdflayout=(1l)/' \
                    doc/orgcard.tex > doc/orgcard_letter.tex
 
 doc/orgcard_letter.pdf: doc/orgcard_letter.tex
-	(cd doc; pdftex orgcard_letter.tex)
+	(cd doc && pdftex orgcard_letter.tex)
 
 # Below here are special targets for maintenance only
 
@@ -285,7 +330,7 @@ pdf:	doc/org.pdf doc/orgguide.pdf
 card:	doc/orgcard.pdf doc/orgcard_letter.pdf doc/orgcard.txt
 
 testrelease:
-	git checkout -b testrelease maint
+	git checkout -b testrelease origin/maint
 	git merge -s recursive -X theirs master
 	UTILITIES/set-version.pl testing
 	git commit -a -m "Release testing"
@@ -426,11 +471,11 @@ cleancontrib:
 cleanelc:
 	rm -f $(ELCFILES)
 cleandoc:
-	(cd doc; rm -f org.pdf org org.html orgcard.pdf orgguide.pdf)
-	(cd doc; rm -f *.aux *.cp *.cps *.dvi *.fn *.fns *.ky *.kys *.pg *.pgs)
-	(cd doc; rm -f *.toc *.tp *.tps *.vr *.vrs *.log *.html *.ps)
-	(cd doc; rm -f orgcard_letter.tex orgcard_letter.pdf)
-	(cd doc; rm -rf manual)
+	-(cd doc && rm -f org.pdf org org.html orgcard.pdf orgguide.pdf)
+	-(cd doc && rm -f *.aux *.cp *.cps *.dvi *.fn *.fns *.ky *.kys *.pg *.pgs)
+	-(cd doc && rm -f *.toc *.tp *.tps *.vr *.vrs *.log *.html *.ps)
+	-(cd doc && rm -f orgcard_letter.tex orgcard_letter.pdf)
+	-(cd doc && rm -rf manual)
 
 cleanrel:
 	rm -rf RELEASEDIR
@@ -442,15 +487,15 @@ cleanrel:
 
 
 push:
-	git-push orgmode@orgmode.org:org-mode.git master
+	git push orgmode@orgmode.org:org-mode.git master
 
 pushtag:
-	git-tag -m "Adding tag" -a $(TAG)
-	git-push orgmode@orgmode.org:org-mode.git $(TAG)
+	git tag -m "Adding tag" -a $(TAG)
+	git push orgmode@orgmode.org:org-mode.git $(TAG)
 
 pushreleasetag:
-	git-tag -m "Adding release tag" -a release_$(TAG)
-	git-push orgmode@orgmode.org:org-mode.git release_$(TAG)
+	git tag -m "Adding release tag" -a release_$(TAG)
+	git push orgmode@orgmode.org:org-mode.git release_$(TAG)
 
 # Dependencies
 
@@ -491,6 +536,7 @@ lisp/org-inlinetask.elc:
 lisp/org-irc.elc:	lisp/org.el
 lisp/org-jsinfo.elc:	lisp/org.el lisp/org-exp.el
 lisp/org-list.elc:	lisp/org-macs.el lisp/org-compat.el
+lisp/org-lparse.elc:	lisp/org-exp.el
 lisp/org-mac-message.elc:	lisp/org.el
 lisp/org-macs.elc:
 lisp/org-mew.elc:	lisp/org.el
@@ -498,6 +544,7 @@ lisp/org-mhe.elc:	lisp/org.el
 lisp/org-mks.elc:
 lisp/org-mobile.elc:	lisp/org.el
 lisp/org-mouse.elc:	lisp/org.el
+lisp/org-odt.elc:	lisp/org-lparse.el
 lisp/org-plot.elc:	lisp/org.el lisp/org-exp.el lisp/org-table.el
 lisp/org-publish.elc:
 lisp/org-protocol.elc:	lisp/org.el
@@ -512,3 +559,19 @@ lisp/org-vm.elc:	lisp/org.el
 lisp/org-w3m.elc:	lisp/org.el
 lisp/org-wl.elc:	lisp/org.el
 lisp/org-xoxo.elc:	lisp/org-exp.el
+
+# Describe valid make targets for org-mode.
+targets help:
+	@echo "make - compile Org ELisp files"
+	@echo "make clean - clean Elisp and documentation files"
+	@echo "make all - compile Org ELisp files and documentation"
+	@echo ""
+	@echo "make doc - make all documentation"
+	@echo "make info - make Info documentation"
+	@echo "make html - make HTML documentation"
+	@echo "make pdf - make pdf documentation"
+	@echo "make card - make refcards documentation"
+	@echo ""
+	@echo "make install - install Org"
+	@echo "make install-lisp - install Org ELisp files"
+	@echo "make install-info - install Org Info file"

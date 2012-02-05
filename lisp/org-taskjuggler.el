@@ -1,10 +1,9 @@
 ;;; org-taskjuggler.el --- TaskJuggler exporter for org-mode
 ;;
-;; Copyright (C) 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2012 Free Software Foundation, Inc.
 ;;
 ;; Emacs Lisp Archive Entry
 ;; Filename: org-taskjuggler.el
-;; Version: 7.5
 ;; Author: Christian Egli
 ;; Maintainer: Christian Egli
 ;; Keywords: org, taskjuggler, project planning
@@ -70,7 +69,7 @@
 ;; "taskjuggler_project" (or whatever you customized
 ;; `org-export-taskjuggler-project-tag' to). You are now ready to
 ;; export the project plan with `org-export-as-taskjuggler-and-open'
-;; which will export the project plan and open a gant chart in
+;; which will export the project plan and open a Gantt chart in
 ;; TaskJugglerUI.
 ;;
 ;; * Resources
@@ -126,15 +125,15 @@
 ;;   :END:
 ;; ** Markup Guidelines
 ;;    :PROPERTIES:
-;;    :Effort:   2.0
+;;    :Effort:   2d
 ;;    :END:
 ;; ** Workflow Guidelines
 ;;    :PROPERTIES:
-;;    :Effort:   2.0
+;;    :Effort:   2d
 ;;    :END:
 ;; * Presentation
 ;;   :PROPERTIES:
-;;   :Effort:   2.0
+;;   :Effort:   2d
 ;;   :BLOCKER:  training_material { gapduration 1d } some_other_task
 ;;   :END:
 ;;
@@ -265,12 +264,12 @@ defined in `org-export-taskjuggler-default-reports'."
 	   (org-taskjuggler-assign-task-ids
 	    (org-taskjuggler-compute-task-leafiness
 	     (org-map-entries
-	      '(org-taskjuggler-components)
+	      'org-taskjuggler-components
 	      org-export-taskjuggler-project-tag nil 'archive 'comment)))))
 	 (resources
 	  (org-taskjuggler-assign-resource-ids
 	   (org-map-entries
-	    '(org-taskjuggler-components)
+	    'org-taskjuggler-components
 	    org-export-taskjuggler-resource-tag nil 'archive 'comment)))
 	 (filename (expand-file-name
 		    (concat
@@ -278,6 +277,7 @@ defined in `org-export-taskjuggler-default-reports'."
 		      (file-name-nondirectory buffer-file-name))
 		     org-export-taskjuggler-extension)))
 	 (buffer (find-file-noselect filename))
+	 (old-buffer (current-buffer))
 	 (org-export-taskjuggler-old-level 0)
 	 task resource)
     (unless tasks
@@ -305,6 +305,7 @@ defined in `org-export-taskjuggler-default-reports'."
 	(setcar tasks (push (cons "version" version) task))))
     (with-current-buffer buffer
       (erase-buffer)
+      (org-clone-local-variables old-buffer "^org-")
       (org-taskjuggler-open-project (car tasks))
       (insert org-export-taskjuggler-default-global-properties)
       (insert "\n")
@@ -354,8 +355,8 @@ information, all the properties, etc."
   (let* ((props (org-entry-properties))
 	 (components (org-heading-components))
 	 (level (nth 1 components))
-	 (headline 
-	  (replace-regexp-in-string 
+	 (headline
+	  (replace-regexp-in-string
 	   "\"" "\\\"" (nth 4 components) t t)) ; quote double quotes in headlines
 	 (parent-ordered (org-taskjuggler-parent-is-ordered-p)))
     (push (cons "level" level) props)
@@ -405,10 +406,10 @@ deeper), then it's not a leaf."
 	    (successor (car (cdr tasks))))
 	(cond
 	 ;; if a task has no successors it is a leaf
-	 ((null successor) 
+	 ((null successor)
 	  (push (cons (cons "leaf-node" t) task) new-list))
 	 ;; if the successor has a lower level than task it is a leaf
-	 ((<= (cdr (assoc "level" successor)) (cdr (assoc "level" task))) 
+	 ((<= (cdr (assoc "level" successor)) (cdr (assoc "level" task)))
 	  (push (cons (cons "leaf-node" t) task) new-list))
 	 ;; otherwise examine the rest of the tasks
 	 (t (push task new-list))))
@@ -555,10 +556,10 @@ attributes from the PROJECT alist are inserted. If no end date is
 specified it is calculated
 `org-export-taskjuggler-default-project-duration' days from now."
   (let* ((unique-id (cdr (assoc "unique-id" project)))
-	(headline (cdr (assoc "headline" project)))
-	(version (cdr (assoc "version" project)))
-	(start (cdr (assoc "start" project)))
-	(end (cdr (assoc "end" project))))
+	 (headline (cdr (assoc "headline" project)))
+	 (version (cdr (assoc "version" project)))
+	 (start (cdr (assoc "start" project)))
+	 (end (cdr (assoc "end" project))))
     (insert
      (format "project %s \"%s\" \"%s\" %s +%sd {\n }\n"
 	     unique-id headline version start
@@ -571,7 +572,7 @@ with separator \"\n\"."
     (and filtered-items (mapconcat 'identity filtered-items "\n"))))
 
 (defun org-taskjuggler-get-attributes (item attributes)
-  "Return all attribute as a single formated string. ITEM is an
+  "Return all attribute as a single formatted string. ITEM is an
 alist representing either a resource or a task. ATTRIBUTES is a
 list of symbols. Only entries from ITEM are considered that are
 listed in ATTRIBUTES."
@@ -613,20 +614,13 @@ is defined it will calculate a unique id for the resource using
 
 (defun org-taskjuggler-clean-effort (effort)
   "Translate effort strings into a format acceptable to taskjuggler,
-i.e. REAL UNIT. If the effort string is something like 5:30 it
-will be assumed to be hours and will be translated into 5.5h.
-Otherwise if it contains something like 3.0 it is assumed to be
-days and will be translated into 3.0d. Other formats that
-taskjuggler supports (like weeks, months and years) are currently
-not supported."
+i.e. REAL UNIT. A valid effort string can be anything that is
+accepted by `org-duration-string-to-minutes´."
   (cond
    ((null effort) effort)
-   ((string-match "\\([0-9]+\\):\\([0-9]+\\)" effort)
-    (let ((hours (string-to-number (match-string 1 effort)))
-	  (minutes (string-to-number (match-string 2 effort))))
-      (format "%dh" (+ hours (/ minutes 60.0)))))
-   ((string-match "\\([0-9]+\\).\\([0-9]+\\)" effort) (concat effort "d"))
-   (t (error "Not a valid effort (%s)" effort))))
+   (t (let* ((minutes (org-duration-string-to-minutes effort))
+	     (hours (/ minutes 60.0)))
+	(format "%.1fh" hours)))))
 
 (defun org-taskjuggler-get-priority (priority)
   "Return a priority between 1 and 1000 based on PRIORITY, an
@@ -636,28 +630,28 @@ org-mode priority string."
 
 (defun org-taskjuggler-open-task (task)
   (let* ((unique-id (cdr (assoc "unique-id" task)))
-	(headline (cdr (assoc "headline" task)))
-	(effort (org-taskjuggler-clean-effort (cdr (assoc org-effort-property task))))
-	(depends (cdr (assoc "depends" task)))
-	(allocate (cdr (assoc "allocate" task)))
-	(priority-raw (cdr (assoc "PRIORITY" task)))
-	(priority (and priority-raw (org-taskjuggler-get-priority priority-raw)))
-	(state (cdr (assoc "TODO" task)))
-	(complete (or (and (member state org-done-keywords) "100")
-		      (cdr (assoc "complete" task))))
-	(parent-ordered (cdr (assoc "parent-ordered" task)))
-	(previous-sibling (cdr (assoc "previous-sibling" task)))
-	(milestone (or (cdr (assoc "milestone" task))
-		       (and (assoc "leaf-node" task)
-			    (not (or effort
-				     (cdr (assoc "duration" task))
-				     (cdr (assoc "end" task))
-				     (cdr (assoc "period" task)))))))
-	(attributes
-	 '(account start note duration endbuffer endcredit end
-	   flags journalentry length maxend maxstart minend
-	   minstart period reference responsible scheduling
-	   startbuffer startcredit statusnote)))
+	 (headline (cdr (assoc "headline" task)))
+	 (effort (org-taskjuggler-clean-effort (cdr (assoc org-effort-property task))))
+	 (depends (cdr (assoc "depends" task)))
+	 (allocate (cdr (assoc "allocate" task)))
+	 (priority-raw (cdr (assoc "PRIORITY" task)))
+	 (priority (and priority-raw (org-taskjuggler-get-priority priority-raw)))
+	 (state (cdr (assoc "TODO" task)))
+	 (complete (or (and (member state org-done-keywords) "100")
+		       (cdr (assoc "complete" task))))
+	 (parent-ordered (cdr (assoc "parent-ordered" task)))
+	 (previous-sibling (cdr (assoc "previous-sibling" task)))
+	 (milestone (or (cdr (assoc "milestone" task))
+			(and (assoc "leaf-node" task)
+			     (not (or effort
+				      (cdr (assoc "duration" task))
+				      (cdr (assoc "end" task))
+				      (cdr (assoc "period" task)))))))
+	 (attributes
+	  '(account start note duration endbuffer endcredit end
+		    flags journalentry length maxend maxstart minend
+		    minstart period reference responsible scheduling
+		    startbuffer startcredit statusnote)))
     (insert
      (concat
       "task " unique-id " \"" headline "\" {\n"
