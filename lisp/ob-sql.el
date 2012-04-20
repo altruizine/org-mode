@@ -24,6 +24,7 @@
 ;;; Commentary:
 
 ;; Org-Babel support for evaluating sql source code.
+;; (see also ob-sqlite.el)
 ;;
 ;; SQL is somewhat unique in that there are many different engines for
 ;; the evaluation of sql (Mysql, PostgreSQL, etc...), so much of this
@@ -50,8 +51,9 @@
 
 (defvar org-babel-default-header-args:sql '())
 
-(defvar org-babel-header-arg-names:sql
-  '(engine out-file))
+(defvar org-babel-header-args:sql
+  '((engine   . :any)
+    (out-file . :any)))
 
 (defun org-babel-expand-body:sql (body params)
   "Expand BODY according to the values of PARAMS."
@@ -69,6 +71,10 @@ This function is called by `org-babel-execute-src-block'."
                        (org-babel-temp-file "sql-out-")))
 	 (header-delim "")
          (command (case (intern engine)
+                    ('monetdb (format "mclient -f tab %s < %s > %s"
+                                      (or cmdline "")
+                                      (org-babel-process-file-name in-file)
+                                      (org-babel-process-file-name out-file)))
                     ('msosql (format "osql %s -s \"\t\" -i %s -o %s"
                                      (or cmdline "")
                                      (org-babel-process-file-name in-file)

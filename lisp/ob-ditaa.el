@@ -34,9 +34,14 @@
 ;; 3) we are adding the "file" and "cmdline" header arguments
 ;;
 ;; 4) there are no variables (at least for now)
+;;
+;; 5) it depends on a variable defined in org-exp-blocks (namely
+;;    `org-ditaa-jar-path') so be sure you have org-exp-blocks loaded
 
 ;;; Code:
 (require 'ob)
+
+(defvar org-ditaa-jar-path) ;; provided by org-exp-blocks
 
 (defvar org-babel-default-header-args:ditaa
   '((:results . "file")
@@ -44,15 +49,11 @@
     (:java . "-Dfile.encoding=UTF-8"))
   "Default arguments for evaluating a ditaa source block.")
 
-(defcustom org-ditaa-jar-path nil
-  "Path for the ditaa jar file."
-  :group 'org-babel
-  :type 'string)
-
 (defcustom org-ditaa-jar-option "-jar"
   "Option for the ditaa jar file.
 Do not leave leading or trailing spaces in this string."
   :group 'org-babel
+  :version "24.1"
   :type 'string)
 
 (defun org-babel-execute:ditaa (body params)

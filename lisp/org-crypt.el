@@ -111,6 +111,7 @@ nil      : Leave auto-save-mode enabled.
            NOTE: This only works for entries which have a tag
            that matches `org-crypt-tag-matcher'."
   :group 'org-crypt
+  :version "24.1"
   :type '(choice (const :tag "Always"  t)
                  (const :tag "Never"   nil)
                  (const :tag "Ask"     ask)
@@ -236,16 +237,20 @@ See `org-crypt-disable-auto-save'."
 (defun org-encrypt-entries ()
   "Encrypt all top-level entries in the current buffer."
   (interactive)
-  (org-scan-tags
-   'org-encrypt-entry
-   (cdr (org-make-tags-matcher org-crypt-tag-matcher))))
+  (let (todo-only)
+    (org-scan-tags
+     'org-encrypt-entry
+     (cdr (org-make-tags-matcher org-crypt-tag-matcher))
+     todo-only)))
 
 (defun org-decrypt-entries ()
   "Decrypt all entries in the current buffer."
   (interactive)
-  (org-scan-tags
-   'org-decrypt-entry
-   (cdr (org-make-tags-matcher org-crypt-tag-matcher))))
+  (let (todo-only)
+    (org-scan-tags
+     'org-decrypt-entry
+     (cdr (org-make-tags-matcher org-crypt-tag-matcher))
+     todo-only)))
 
 (defun org-crypt-use-before-save-magic ()
   "Add a hook to automatically encrypt entries before a file is saved to disk."

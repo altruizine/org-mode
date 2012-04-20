@@ -98,6 +98,7 @@ is nil, the buffer remains buried also in these cases."
 This applied to the commands `org-export-as-html-and-open' and
 `org-export-as-pdf-and-open'."
   :group 'org-export-general
+  :version "24.1"
   :type 'boolean)
 
 (defcustom org-export-run-in-background nil
@@ -120,6 +121,7 @@ force an export command into the current process."
   "The initial scope when exporting with `org-export'.
 This variable can be either set to 'buffer or 'subtree."
   :group 'org-export-general
+  :version "24.1"
   :type '(choice
 	  (const :tag "Export current buffer" 'buffer)
 	  (const :tag "Export current subtree" 'subtree)))
@@ -192,12 +194,27 @@ This option can also be set with the +OPTIONS line, e.g. \"-:nil\"."
     ("hu" "Szerz&otilde;" "D&aacute;tum" "Tartalomjegyz&eacute;k" "L&aacute;bjegyzet")
     ("is" "H&ouml;fundur" "Dagsetning" "Efnisyfirlit" "Aftanm&aacute;lsgreinar")
     ("it" "Autore"     "Data"  "Indice" "Note a pi&egrave; di pagina")
+    ;; Use numeric character entities for proper rendering of non-UTF8 documents
+    ;; ("ja" "著者"       "日付"  "目次"          "脚注")
+    ("ja" "&#33879;&#32773;" "&#26085;&#20184;" "&#30446;&#27425;" "&#33050;&#27880;")
     ("nl" "Auteur"     "Datum" "Inhoudsopgave" "Voetnoten")
     ("no" "Forfatter"  "Dato"  "Innhold" "Fotnoter")
     ("nb" "Forfatter"  "Dato"  "Innhold" "Fotnoter")  ;; nb = Norsk (bokm.l)
     ("nn" "Forfattar"  "Dato"  "Innhald" "Fotnotar")  ;; nn = Norsk (nynorsk)
     ("pl" "Autor"      "Data" "Spis tre&#x015b;ci"  "Przypis")
-    ("sv" "F&ouml;rfattare" "Datum" "Inneh&aring;ll" "Fotnoter"))
+    ;; Use numeric character entities for proper rendering of non-UTF8 documents
+    ;; ("ru" "Автор"      "Дата"  "Содержание" "Сноски")
+    ("ru" "&#1040;&#1074;&#1090;&#1086;&#1088;"      "&#1044;&#1072;&#1090;&#1072;"  "&#1057;&#1086;&#1076;&#1077;&#1088;&#1078;&#1072;&#1085;&#1080;&#1077;" "&#1057;&#1085;&#1086;&#1089;&#1082;&#1080;")
+    ("sv" "F&ouml;rfattare" "Datum" "Inneh&aring;ll" "Fotnoter")
+    ;; Use numeric character entities for proper rendering of non-UTF8 documents
+    ;; ("uk" "Автор" "Дата" "Зміст" "Примітки")
+    ("uk" "&#1040;&#1074;&#1090;&#1086;&#1088;" "&#1044;&#1072;&#1090;&#1072;" "&#1047;&#1084;&#1110;&#1089;&#1090;" "&#1055;&#1088;&#1080;&#1084;&#1110;&#1090;&#1082;&#1080;")
+    ;; Use numeric character entities for proper rendering of non-UTF8 documents
+    ;; ("zh-CN" "作者" "日期" "目录" "脚注")
+    ("zh-CN" "&#20316;&#32773;" "&#26085;&#26399;" "&#30446;&#24405;" "&#33050;&#27880;")
+    ;; Use numeric character entities for proper rendering of non-UTF8 documents
+    ;; ("zh-TW" "作者" "日期" "目錄" "腳註")
+    ("zh-TW" "&#20316;&#32773;" "&#26085;&#26399;" "&#30446;&#37636;" "&#33139;&#35387;"))
   "Terms used in export text, translated to different languages.
 Use the variable `org-export-default-language' to set the language,
 or use the +OPTION lines for a per-file setting."
@@ -220,6 +237,7 @@ and in `org-clock-clocktable-language-setup'."
 (defcustom org-export-date-timestamp-format "%Y-%m-%d"
   "Time string format for Org timestamps in the #+DATE option."
   :group 'org-export-general
+  :version "24.1"
   :type 'string)
 
 (defvar org-export-page-description ""
@@ -317,6 +335,7 @@ done                 include only tasks that are already done.
 nil                  remove all tasks before export
 list of TODO kwds    keep only tasks with these keywords"
   :group 'org-export-general
+  :version "24.1"
   :type '(choice
 	  (const :tag "All tasks" t)
 	  (const :tag "No tasks" nil)
@@ -367,6 +386,7 @@ e.g. \"author:nil\"."
 This option can also be set with the +OPTIONS line,
 e.g. \"email:t\"."
   :group 'org-export-general
+  :version "24.1"
   :type 'boolean)
 
 (defcustom org-export-creator-info t
@@ -594,6 +614,7 @@ the values of constants may be useful to have."
 This is the global equivalent of the :remove-nil-lines option
 when locally sending a table with #+ORGTBL."
   :group 'org-export-tables
+  :version "24.1"
   :type 'boolean)
 
 (defcustom org-export-prefer-native-exporter-for-tables nil
@@ -1761,17 +1782,7 @@ from the buffer."
 		 beg-content end-content
 		 `(org-protected t original-indentation ,ind org-native-text t))
 		;; strip protective commas
-		(save-excursion
-		  (save-match-data
-		    (goto-char beg-content)
-		    (let ((front-line (save-excursion
-					(re-search-forward
-					 "[^[:space:]]" end-content t)
-					(goto-char (match-beginning 0))
-					(current-column))))
-		      (while (re-search-forward "^[ \t]*\\(,\\)" end-content t)
-			(when (= (current-column) front-line)
-			  (replace-match "" nil nil nil 1))))))
+		(org-strip-protective-commas beg-content end-content)
 		(delete-region (match-beginning 0) (match-end 0))
 		(save-excursion
 		  (goto-char beg)
@@ -1818,8 +1829,7 @@ These special cookies will later be interpreted by the backend."
 		  (top (point-at-bol))
 		  (top-ind (org-list-get-ind top struct)))
 	     (goto-char bottom)
-	     (when (and (not (eq org-list-ending-method 'indent))
-			(not (looking-at "[ \t]*$"))
+	     (when (and (not (looking-at "[ \t]*$"))
 			(looking-at org-list-end-re))
 	       (replace-match ""))
 	     (unless (bolp) (insert "\n"))
@@ -1877,8 +1887,7 @@ These special properties will later be interpreted by the backend."
 	      ;; useful to line processing exporters.
 	      (goto-char bottom)
 	      (when (or (looking-at "^ORG-LIST-END-MARKER\n")
-			(and (not (eq org-list-ending-method 'indent))
-			     (not (looking-at "[ \t]*$"))
+			(and (not (looking-at "[ \t]*$"))
 			     (looking-at org-list-end-re)))
 		(replace-match ""))
 	      (unless (bolp) (insert "\n"))
@@ -2205,7 +2214,7 @@ can work correctly."
 	;; This is a subtree, we take the title from the first heading
 	(goto-char rbeg)
 	(looking-at org-todo-line-tags-regexp)
-	(setq title (if (eq tags t)
+	(setq title (if (and (eq tags t) (match-string 4))
 			(format "%s\t%s" (match-string 3) (match-string 4))
 		      (match-string 3)))
 	(org-unmodified
@@ -3279,7 +3288,7 @@ If yes remove the column and the special lines."
 	      ((org-table-cookie-line-p x)
 	       ;; This line contains formatting cookies, discard it
 	       nil)
-	      ((string-match "^[ \t]*| *[!_^/] *|" x)
+	      ((string-match "^[ \t]*| *\\([!_^/$]\\|\\\\\\$\\) *|" x)
 	       ;; ignore this line
 	       nil)
 	      ((or (string-match "^\\([ \t]*\\)|-+\\+" x)

@@ -170,7 +170,9 @@ LISPF      = 	org.el			\
 		ob-shen.el		\
 		ob-fortran.el		\
 		ob-picolisp.el		\
-		ob-maxima.el
+		ob-maxima.el		\
+		ob-io.el		\
+		ob-scala.el
 
 LISPFILES0  = $(LISPF:%=lisp/%)
 LISPFILES   = $(LISPFILES0) lisp/org-install.el
@@ -258,18 +260,21 @@ org-odt-data-dir:
 install-lisp: BATCH_EXTRA = -eval "(setq org-odt-data-dir (expand-file-name \"$(datadir)\"))"
 
 install-lisp: $(LISPFILES) $(ELCFILES)
-	if [ ! -d $(lispdir) ]; then $(MKDIR) $(lispdir); else true; fi ;
-	$(CP) $(LISPFILES)  $(lispdir)
-	$(CP) $(ELCFILES)   $(lispdir)
+	if [ ! -d $(DESTDIR)$(lispdir) ]; then \
+		$(MKDIR) $(DESTDIR)$(lispdir); else true; fi ;
+	$(CP) $(LISPFILES)  $(DESTDIR)$(lispdir)
+	$(CP) $(ELCFILES)   $(DESTDIR)$(lispdir)
 
 install-info: $(INFOFILES)
-	if [ ! -d $(infodir) ]; then $(MKDIR) $(infodir); else true; fi ;
-	$(CP) $(INFOFILES) $(infodir)
-	$(INSTALL_INFO) --infodir=$(infodir) $(INFOFILES)
+	if [ ! -d $(DESTDIR)$(infodir) ]; then \
+		$(MKDIR) $(DESTDIR)$(infodir); else true; fi ;
+	$(CP) $(INFOFILES) $(DESTDIR)$(infodir)
+	$(INSTALL_INFO) --infodir=$(DESTDIR)$(infodir) $(INFOFILES)
 
 install-data: $(DATAFILES)
-	if [ ! -d $(datadir) ]; then $(MKDIR) $(datadir); else true; fi ;
-	$(CP) $(DATAFILES) $(datadir)
+	if [ ! -d $(DESTDIR)$(datadir) ]; then \
+		$(MKDIR) $(DESTDIR)$(datadir); else true; fi ;
+	$(CP) $(DATAFILES) $(DESTDIR)$(datadir)
 
 autoloads: lisp/org-install.el
 
@@ -350,18 +355,15 @@ release:
 	git checkout maint
 	git merge -s recursive -X theirs master
 	UTILITIES/set-version.pl $(TAG)
-	git commit -a -m "Release $(TAG)"
+	git commit -a -m "Major release $(TAG) from master"
 	make relup TAG=$(TAG)
 	make cleanrel
-	rm -rf org-$(TAG)
-	rm -f org-$(TAG)*.zip
-	rm -f org-$(TAG)*.tar.gz
 	make pushreleasetag TAG=$(TAG)
 	git push -f origin maint
 	git checkout master
 	git merge -s ours maint
 	UTILITIES/set-version.pl -a $(TAG)
-	git commit -a -m "Update website to show $(TAG) as current release"
+	git commit -a -m "Bump to version $(TAG) as current release from master"
 	git push
 
 # The following target makes a release, but from the stuff that is on
@@ -376,20 +378,16 @@ release:
 
 fixrelease:
 	git checkout maint
-	git merge -s recursive -X theirs master
 	UTILITIES/set-version.pl $(TAG)
-	git commit -a -m "Release $(TAG)"
+	git commit -a -m "Bugfix release $(TAG) from maint"
 	make relup TAG=$(TAG)
 	make cleanrel
-	rm -rf org-$(TAG)
-	rm org-$(TAG)*.zip
-	rm org-$(TAG)*.tar.gz
 	make pushreleasetag TAG=$(TAG)
 	git push -f origin maint
 	git checkout master
 	git merge -s ours maint
 	UTILITIES/set-version.pl -o $(TAG)
-	git commit -a -m "Update website to show $(TAG) as current release"
+	git commit -a -m "Bump to version $(TAG) as current release from maint"
 	git push
 
 # ~$ make relup only makes sense from orgmode.org server
